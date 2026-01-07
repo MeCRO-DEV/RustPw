@@ -33,6 +33,7 @@ A secure, cross-platform desktop password manager built with Rust and the Iced G
   - [Important Note on Cipher Mode](#important-note-on-cipher-mode)
 - [Vault File Format](#vault-file-format)
 - [Security Model](#security-model)
+  - [Corruption Prevention](#corruption-prevention)
 - [License](#license)
 
 ## Architecture
@@ -406,6 +407,22 @@ RustPW vault files (`.rustpw`) use a binary format:
 | **Clipboard Auto-Clear** | Copied passwords are automatically cleared from clipboard |
 | **No Plain-Text Storage** | Passwords are never stored in plain text on disk |
 | **Authenticated Encryption** | GCM mode provides integrity verification, detecting tampering |
+| **Atomic Saves with Backup** | Vault saves use atomic writes to prevent corruption (see below) |
+
+### Corruption Prevention
+
+RustPW uses **atomic writes with automatic backup** to prevent vault corruption:
+
+1. **Write to temp file** - Data is first written to `vault.rustpw.tmp`
+2. **Create backup** - The existing vault is renamed to `vault.rustpw.bak`
+3. **Atomic rename** - The temp file is renamed to the actual vault (atomic operation)
+
+This ensures:
+- If power fails during write, the original vault remains intact
+- If the save fails for any reason, you have a `.bak` backup
+- The vault file is never in a partially-written state
+
+**Recovery**: If your vault becomes corrupted, check for a `.bak` file in the same directory and rename it to restore your previous version.
 
 ### Recommendations
 

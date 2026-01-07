@@ -1825,7 +1825,28 @@ impl RustPw {
         Task::perform(
             async move {
                 let encrypted = VaultCrypto::encrypt(&json, &passphrase, &config)?;
-                fs::write(&path, encrypted).map_err(|e| format!("Failed to write file: {}", e))?;
+
+                // Atomic write with backup to prevent corruption
+                let temp_path = path.with_extension("rustpw.tmp");
+                let backup_path = path.with_extension("rustpw.bak");
+
+                // 1. Write to temporary file first
+                fs::write(&temp_path, &encrypted)
+                    .map_err(|e| format!("Failed to write temp file: {}", e))?;
+
+                // 2. If original exists, create backup
+                if path.exists() {
+                    // Remove old backup if exists
+                    let _ = fs::remove_file(&backup_path);
+                    // Rename current to backup
+                    fs::rename(&path, &backup_path)
+                        .map_err(|e| format!("Failed to create backup: {}", e))?;
+                }
+
+                // 3. Rename temp to actual (atomic on most filesystems)
+                fs::rename(&temp_path, &path)
+                    .map_err(|e| format!("Failed to finalize save: {}", e))?;
+
                 Ok(())
             },
             Message::VaultSaved,
