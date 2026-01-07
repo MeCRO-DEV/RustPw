@@ -44,7 +44,7 @@ RustPW is a single-binary application with all code contained in `src/main.rs` (
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                        RustPW Application                    │
+│                        RustPW Application                   │
 ├─────────────────────────────────────────────────────────────┤
 │  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐  │
 │  │   Config    │  │ VaultCrypto │  │     VaultData       │  │
@@ -53,7 +53,7 @@ RustPW is a single-binary application with all code contained in `src/main.rs` (
 │  └─────────────┘  └─────────────┘  └─────────────────────┘  │
 ├─────────────────────────────────────────────────────────────┤
 │  ┌─────────────────────────────────────────────────────┐    │
-│  │                    GUI Layer (Iced)                  │    │
+│  │                    GUI Layer (Iced)                 │    │
 │  │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌────────┐  │    │
 │  │  │ Startup  │ │   Main   │ │ Dialogs  │ │ Locked │  │    │
 │  │  │  Screen  │ │  Screen  │ │          │ │ Screen │  │    │
@@ -61,8 +61,8 @@ RustPW is a single-binary application with all code contained in `src/main.rs` (
 │  └─────────────────────────────────────────────────────┘    │
 ├─────────────────────────────────────────────────────────────┤
 │  ┌─────────────────────────────────────────────────────┐    │
-│  │              Message-Based State Management          │    │
-│  │         (update function handles all events)         │    │
+│  │              Message-Based State Management         │    │
+│  │         (update function handles all events)        │    │
 │  └─────────────────────────────────────────────────────┘    │
 └─────────────────────────────────────────────────────────────┘
 ```
