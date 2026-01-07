@@ -1,3 +1,5 @@
+#![windows_subsystem = "windows"]
+
 //! RustPw - A secure password manager built with Rust and Iced
 //!
 //! Features:
@@ -19,7 +21,7 @@ use ctr::cipher::StreamCipher;
 use chrono::Utc;
 use iced::widget::{
     button, checkbox, column, container, horizontal_rule, horizontal_space, image, progress_bar,
-    row, scrollable, text, text_input, tooltip, vertical_space, Column, Row, Tooltip,
+    row, scrollable, text, text_input, tooltip, vertical_space, Column, Row,
 };
 use iced::widget::text_input::Id as TextInputId;
 use iced::{
@@ -57,10 +59,8 @@ const COLOR_ACCENT_CYAN: Color = Color::from_rgb(0.0, 1.0, 1.0); // cyan
 const COLOR_ACCENT_GREEN: Color = Color::from_rgb(0.0, 1.0, 0.0); // #00FF00
 const COLOR_TEXT_WHITE: Color = Color::from_rgb(1.0, 1.0, 1.0); // white
 const COLOR_ACCENT_ORANGE: Color = Color::from_rgb(1.0, 0.6, 0.0); // #FF9900
-const COLOR_ACCENT_PURPLE: Color = Color::from_rgb(0.8, 0.4, 1.0); // #CC66FF
 const COLOR_ACCENT_RED: Color = Color::from_rgb(1.0, 0.4, 0.4); // #FF6666
 const COLOR_HOVER: Color = Color::from_rgb(0.184, 0.184, 0.427); // #2F2F6D
-const COLOR_TEXT_DIM: Color = Color::from_rgb(0.5, 0.5, 0.5); // dimmed gray for disabled
 
 // Special characters for password generation
 const SPECIAL_CHARS: &str = "!@#$%^&*()_+-=[]{}|;:,.<>?";
@@ -75,7 +75,6 @@ fn id_entry_password() -> TextInputId { TextInputId::new("entry_password") }
 fn id_entry_url() -> TextInputId { TextInputId::new("entry_url") }
 fn id_entry_notes() -> TextInputId { TextInputId::new("entry_notes") }
 fn id_category_name() -> TextInputId { TextInputId::new("category_name") }
-fn id_search() -> TextInputId { TextInputId::new("search") }
 
 // ============================================================================
 // Configuration
@@ -126,6 +125,8 @@ pub struct Config {
     pub clipboard_clear_seconds: u32,
     pub default_password_length: u32,
     pub max_category_name_length: u32,
+    #[serde(default)]
+    pub default_vault: Option<String>,
 }
 
 impl Default for Config {
@@ -138,6 +139,7 @@ impl Default for Config {
             clipboard_clear_seconds: 30,
             default_password_length: 16,
             max_category_name_length: 30,
+            default_vault: Some("/home/tom/Documents/vault.rustpw".to_string()),
         }
     }
 }
@@ -892,6 +894,7 @@ pub enum Message {
     ConfigClipboardClearChanged(String),
     ConfigPasswordLengthChanged(String),
     ConfigMaxCategoryLengthChanged(String),
+    ConfigDefaultVaultChanged(String),
     SaveConfig,
     ResetConfigDefaults,
 
@@ -962,6 +965,10 @@ pub struct RustPw {
     last_activity: Instant,
     clipboard_clear_time: Option<Instant>,
 
+    // Double-click tracking for category tabs
+    last_tab_click_time: Option<Instant>,
+    last_tab_clicked: Option<String>,
+
     // Status
     status_message: String,
 }
@@ -1010,6 +1017,9 @@ impl Default for RustPw {
             last_activity: Instant::now(),
             clipboard_clear_time: None,
 
+            last_tab_click_time: None,
+            last_tab_clicked: None,
+
             status_message: "Ready".to_string(),
         }
     }
@@ -1017,7 +1027,22 @@ impl Default for RustPw {
 
 impl RustPw {
     fn new() -> (Self, Task<Message>) {
-        (Self::default(), Task::none())
+        let mut app = Self::default();
+
+        // Check if default vault exists and open it
+        if let Some(ref default_vault) = app.config.default_vault {
+            let path = PathBuf::from(default_vault);
+            if path.exists() {
+                app.vault_path = Some(path);
+                app.vault_dialog_path = default_vault.clone();
+                app.screen = Screen::VaultDialog {
+                    mode: VaultDialogMode::Open,
+                };
+                return (app, text_input::focus(id_passphrase()));
+            }
+        }
+
+        (app, Task::none())
     }
 
     fn title(&self) -> String {
@@ -1324,8 +1349,27 @@ impl RustPw {
                 };
             }
             Message::SelectCategory(name) => {
-                self.selected_category = Some(name);
-                self.password_visible_rows.clear();
+                let now = Instant::now();
+                let is_double_click = self.last_tab_clicked.as_ref() == Some(&name)
+                    && self.last_tab_click_time
+                        .map(|t| now.duration_since(t) < Duration::from_millis(500))
+                        .unwrap_or(false);
+
+                if is_double_click {
+                    // Double-click: open rename dialog
+                    self.category_input = name.clone();
+                    self.screen = Screen::CategoryInput {
+                        mode: CategoryInputMode::Rename { old_name: name },
+                    };
+                    self.last_tab_click_time = None;
+                    self.last_tab_clicked = None;
+                } else {
+                    // Single click: select category and track for potential double-click
+                    self.selected_category = Some(name.clone());
+                    self.password_visible_rows.clear();
+                    self.last_tab_click_time = Some(now);
+                    self.last_tab_clicked = Some(name);
+                }
             }
             Message::CategoryNameChanged(s) => {
                 self.category_input = s;
@@ -1533,6 +1577,13 @@ impl RustPw {
                     self.config_edit.max_category_name_length = v;
                 }
             }
+            Message::ConfigDefaultVaultChanged(s) => {
+                self.config_edit.default_vault = if s.trim().is_empty() {
+                    None
+                } else {
+                    Some(s)
+                };
+            }
             Message::SaveConfig => {
                 self.config = self.config_edit.clone();
                 self.config.save();
@@ -1609,7 +1660,7 @@ impl RustPw {
         Task::none()
     }
 
-    fn view(&self) -> Element<Message> {
+    fn view(&self) -> Element<'_, Message> {
         match &self.screen {
             Screen::Startup => self.view_startup(),
             Screen::Main => self.view_main(),
@@ -1944,7 +1995,7 @@ impl RustPw {
 // View Methods
 // ============================================================================
 impl RustPw {
-    fn view_startup(&self) -> Element<Message> {
+    fn view_startup(&self) -> Element<'_, Message> {
         let icon_handle = image::Handle::from_bytes(include_bytes!("../assets/icon.png").to_vec());
         let icon_image = image(icon_handle).width(128).height(128);
 
@@ -1984,7 +2035,7 @@ impl RustPw {
             .into()
     }
 
-    fn view_main(&self) -> Element<Message> {
+    fn view_main(&self) -> Element<'_, Message> {
         let title_bar = self.view_title_bar();
         let toolbar = self.view_toolbar();
         let search_bar = self.view_search_bar();
@@ -2001,7 +2052,7 @@ impl RustPw {
             .into()
     }
 
-    fn view_title_bar(&self) -> Element<Message> {
+    fn view_title_bar(&self) -> Element<'_, Message> {
         let vault_name = self
             .vault_path
             .as_ref()
@@ -2039,7 +2090,7 @@ impl RustPw {
         .into()
     }
 
-    fn view_toolbar(&self) -> Element<Message> {
+    fn view_toolbar(&self) -> Element<'_, Message> {
         let has_vault = self.vault_data.is_some();
 
         // Create toolbar buttons inline - matching the working tab button pattern
@@ -2113,7 +2164,7 @@ impl RustPw {
         .into()
     }
 
-    fn view_search_bar(&self) -> Element<Message> {
+    fn view_search_bar(&self) -> Element<'_, Message> {
         row![
             text("Search:").size(14).color(COLOR_TEXT_WHITE),
             text_input("Type to search entries...", &self.search_text)
@@ -2129,7 +2180,7 @@ impl RustPw {
         .into()
     }
 
-    fn view_category_tabs(&self) -> Element<Message> {
+    fn view_category_tabs(&self) -> Element<'_, Message> {
         let Some(ref data) = self.vault_data else {
             return container(text("No vault open").color(COLOR_TEXT_WHITE))
                 .padding(10)
@@ -2180,7 +2231,7 @@ impl RustPw {
         .into()
     }
 
-    fn view_entry_table(&self) -> Element<Message> {
+    fn view_entry_table(&self) -> Element<'_, Message> {
         let entries = self.get_filtered_entries();
 
         if entries.is_empty() {
@@ -2275,7 +2326,7 @@ impl RustPw {
             .into()
     }
 
-    fn view_status_bar(&self) -> Element<Message> {
+    fn view_status_bar(&self) -> Element<'_, Message> {
         let entry_count = self
             .vault_data
             .as_ref()
@@ -2294,7 +2345,7 @@ impl RustPw {
         .into()
     }
 
-    fn view_locked(&self) -> Element<Message> {
+    fn view_locked(&self) -> Element<'_, Message> {
         let vault_name = self
             .vault_path
             .as_ref()
@@ -2336,7 +2387,7 @@ impl RustPw {
             .into()
     }
 
-    fn view_vault_dialog(&self, mode: &VaultDialogMode) -> Element<Message> {
+    fn view_vault_dialog(&self, mode: &VaultDialogMode) -> Element<'_, Message> {
         let title = match mode {
             VaultDialogMode::Create => "Create New Vault",
             VaultDialogMode::Open => "Open Vault",
@@ -2451,7 +2502,7 @@ impl RustPw {
         dialog_container(content.width(450).into())
     }
 
-    fn view_entry_dialog(&self, mode: &EntryDialogMode) -> Element<Message> {
+    fn view_entry_dialog(&self, mode: &EntryDialogMode) -> Element<'_, Message> {
         let title = match mode {
             EntryDialogMode::Add => "Add Entry",
             EntryDialogMode::Edit { .. } => "Edit Entry",
@@ -2564,7 +2615,7 @@ impl RustPw {
         dialog_container(content.into())
     }
 
-    fn view_password_generator(&self) -> Element<Message> {
+    fn view_password_generator(&self) -> Element<'_, Message> {
         let (strength, strength_desc) = PasswordGenerator::calculate_strength(&self.pw_gen_password);
         let strength_color = match strength {
             0..=29 => Color::from_rgb(1.0, 0.27, 0.27),
@@ -2641,7 +2692,7 @@ impl RustPw {
         dialog_container(content.into())
     }
 
-    fn view_config_dialog(&self) -> Element<Message> {
+    fn view_config_dialog(&self) -> Element<'_, Message> {
         // Create cipher mode selector buttons
         let cipher_mode_row = row![
             text("Cipher Mode:").width(150).color(COLOR_TEXT_WHITE),
@@ -2701,6 +2752,17 @@ impl RustPw {
                 self.config_edit.max_category_name_length.to_string(),
                 Message::ConfigMaxCategoryLengthChanged
             ),
+            row![
+                text("Default vault:").width(200).color(COLOR_TEXT_WHITE),
+                horizontal_space(),
+                text_input("(none)", &self.config_edit.default_vault.clone().unwrap_or_default())
+                    .on_input(Message::ConfigDefaultVaultChanged)
+                    .padding(5)
+                    .width(280)
+                    .style(text_input_style),
+            ]
+            .spacing(10)
+            .align_y(alignment::Vertical::Center),
             vertical_space().height(20),
             // Buttons
             row![
@@ -2718,7 +2780,7 @@ impl RustPw {
         dialog_container(content.into())
     }
 
-    fn view_vault_properties(&self) -> Element<Message> {
+    fn view_vault_properties(&self) -> Element<'_, Message> {
         let vault_name = self
             .vault_path
             .as_ref()
@@ -2791,7 +2853,7 @@ impl RustPw {
         dialog_container(content.into())
     }
 
-    fn view_confirm_dialog(&self, title: &str, message: &str) -> Element<Message> {
+    fn view_confirm_dialog(&self, title: &str, message: &str) -> Element<'_, Message> {
         let title_owned = title.to_string();
         let message_owned = message.to_string();
         let content = column![
@@ -2815,7 +2877,7 @@ impl RustPw {
         dialog_container(content.into())
     }
 
-    fn view_category_input(&self, mode: &CategoryInputMode) -> Element<Message> {
+    fn view_category_input(&self, mode: &CategoryInputMode) -> Element<'_, Message> {
         let title = match mode {
             CategoryInputMode::Add => "Add Category",
             CategoryInputMode::Rename { .. } => "Rename Category",
@@ -2850,13 +2912,6 @@ impl RustPw {
 // ============================================================================
 // Helper Functions
 // ============================================================================
-fn truncate_str(s: &str, max_len: usize) -> String {
-    if s.len() <= max_len {
-        s.to_string()
-    } else {
-        format!("{}...", &s[..max_len.saturating_sub(3)])
-    }
-}
 
 /// Creates a text cell with tooltip that shows full content on hover
 fn tooltip_text_cell(content: &str, color: Color, width: Length) -> Element<'static, Message> {
@@ -3025,34 +3080,6 @@ fn styled_button<'a>(label: &'a str, color: Color) -> button::Button<'a, Message
     })
 }
 
-fn styled_button_conditional<'a>(label: &'a str, color: Color, enabled: bool) -> button::Button<'a, Message> {
-    let display_color = if enabled { color } else { COLOR_TEXT_DIM };
-    button(
-        row![text(label).size(14).color(display_color)]
-            .align_y(alignment::Vertical::Center)
-    )
-    .padding([10, 15])
-    .style(move |_theme, status| {
-        let base = button::Style {
-            background: Some(COLOR_BG_TITLE.into()),
-            text_color: display_color,
-            border: iced::Border {
-                color: display_color,
-                width: 2.0,
-                radius: 5.0.into(),
-            },
-            ..Default::default()
-        };
-        match status {
-            button::Status::Hovered if enabled => button::Style {
-                background: Some(COLOR_HOVER.into()),
-                ..base
-            },
-            _ => base,
-        }
-    })
-}
-
 fn small_button<'a>(label: &'a str, color: Color) -> button::Button<'a, Message> {
     button(text(label).size(11).color(color))
     .padding([5, 8])
@@ -3076,52 +3103,6 @@ fn small_button<'a>(label: &'a str, color: Color) -> button::Button<'a, Message>
             _ => base,
         }
     })
-}
-
-fn button_colored_style(status: button::Status, color: Color) -> button::Style {
-    let base = button::Style {
-        background: Some(COLOR_BG_TITLE.into()),
-        text_color: color,
-        border: iced::Border {
-            color,
-            width: 2.0,
-            radius: 5.0.into(),
-        },
-        ..Default::default()
-    };
-
-    match status {
-        button::Status::Hovered => button::Style {
-            background: Some(COLOR_HOVER.into()),
-            ..base
-        },
-        button::Status::Pressed => button::Style {
-            background: Some(Color::from_rgb(0.1, 0.1, 0.3).into()),
-            ..base
-        },
-        _ => base,
-    }
-}
-
-fn button_small_style(status: button::Status, color: Color) -> button::Style {
-    let base = button::Style {
-        background: Some(COLOR_BG_TITLE.into()),
-        text_color: color,
-        border: iced::Border {
-            color,
-            width: 1.0,
-            radius: 3.0.into(),
-        },
-        ..Default::default()
-    };
-
-    match status {
-        button::Status::Hovered => button::Style {
-            background: Some(COLOR_HOVER.into()),
-            ..base
-        },
-        _ => base,
-    }
 }
 
 fn button_transparent_style(_theme: &Theme, status: button::Status) -> button::Style {
@@ -3179,7 +3160,7 @@ fn button_tab_style(_theme: &Theme, status: button::Status) -> button::Style {
     }
 }
 
-fn button_tab_selected_style(_theme: &Theme, status: button::Status) -> button::Style {
+fn button_tab_selected_style(_theme: &Theme, _status: button::Status) -> button::Style {
     button::Style {
         background: Some(COLOR_BG_DARK.into()),
         text_color: COLOR_ACCENT_YELLOW,
@@ -3232,7 +3213,7 @@ fn cipher_mode_button(label: &'static str, mode: CipherMode, current: CipherMode
 
     button(text(label).color(if is_selected { COLOR_BG_DARK } else { color }))
         .padding(5)
-        .style(move |theme, status| {
+        .style(move |_theme, status| {
             if is_selected {
                 button::Style {
                     background: Some(iced::Background::Color(COLOR_ACCENT_GREEN)),
