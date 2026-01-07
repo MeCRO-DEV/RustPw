@@ -895,6 +895,8 @@ pub enum Message {
     ConfigPasswordLengthChanged(String),
     ConfigMaxCategoryLengthChanged(String),
     ConfigDefaultVaultChanged(String),
+    BrowseDefaultVault,
+    DefaultVaultFileSelected(Option<PathBuf>),
     SaveConfig,
     ResetConfigDefaults,
 
@@ -1583,6 +1585,24 @@ impl RustPw {
                 } else {
                     Some(s)
                 };
+            }
+            Message::BrowseDefaultVault => {
+                return Task::perform(
+                    async move {
+                        rfd::AsyncFileDialog::new()
+                            .add_filter("RustPw Vault", &[VAULT_FILE_EXTENSION])
+                            .add_filter("All Files", &["*"])
+                            .pick_file()
+                            .await
+                            .map(|h| h.path().to_path_buf())
+                    },
+                    Message::DefaultVaultFileSelected,
+                );
+            }
+            Message::DefaultVaultFileSelected(path) => {
+                if let Some(p) = path {
+                    self.config_edit.default_vault = Some(p.to_string_lossy().to_string());
+                }
             }
             Message::SaveConfig => {
                 self.config = self.config_edit.clone();
@@ -2754,12 +2774,33 @@ impl RustPw {
             ),
             row![
                 text("Default vault:").width(200).color(COLOR_TEXT_WHITE),
-                horizontal_space(),
                 text_input("(none)", &self.config_edit.default_vault.clone().unwrap_or_default())
                     .on_input(Message::ConfigDefaultVaultChanged)
                     .padding(5)
-                    .width(280)
+                    .width(250)
                     .style(text_input_style),
+                button(text("Browse").size(12))
+                    .padding([5, 15])
+                    .style(|_theme, status| {
+                        let base = button::Style {
+                            background: Some(COLOR_BG_TITLE.into()),
+                            text_color: COLOR_ACCENT_CYAN,
+                            border: iced::Border {
+                                color: COLOR_ACCENT_CYAN,
+                                width: 1.0,
+                                radius: 3.0.into(),
+                            },
+                            ..Default::default()
+                        };
+                        match status {
+                            button::Status::Hovered => button::Style {
+                                background: Some(COLOR_HOVER.into()),
+                                ..base
+                            },
+                            _ => base,
+                        }
+                    })
+                    .on_press(Message::BrowseDefaultVault),
             ]
             .spacing(10)
             .align_y(alignment::Vertical::Center),
@@ -2775,7 +2816,7 @@ impl RustPw {
             ],
         ]
         .spacing(8)
-        .width(500);
+        .width(550);
 
         dialog_container(content.into())
     }

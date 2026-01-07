@@ -30,6 +30,7 @@ A secure, cross-platform desktop password manager built with Rust and the Iced G
   - [Managing Categories](#managing-categories)
   - [Password Generator](#password-generator)
 - [Configuration](#configuration)
+  - [Important Note on Cipher Mode](#important-note-on-cipher-mode)
 - [Vault File Format](#vault-file-format)
 - [Security Model](#security-model)
 - [License](#license)
@@ -328,7 +329,15 @@ Configuration is stored in `rustpw.conf` (JSON format) in the same directory as 
 
 ### Accessing Configuration
 
-Click **"Config"** in the toolbar to open the configuration dialog.
+Click **"Config"** in the toolbar to open the configuration dialog. You can use the **"Browse"** button next to the default vault field to select a vault file using the native file dialog.
+
+### Important Note on Cipher Mode
+
+The cipher mode setting in configuration only applies when **creating new vaults**. When opening an existing vault, the cipher mode is read from the vault file header. This means:
+
+- You can open any vault regardless of your current cipher mode setting
+- Different vaults can use different cipher modes
+- Changing the cipher mode in config won't affect existing vaults
 
 ## Vault File Format
 
