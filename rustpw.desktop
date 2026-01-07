@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=RustPw
+Comment=A secure password manager built with Rust
+Exec=rustpw
+Icon=rustpw
+Terminal=false
+Type=Application
+Categories=Utility;Security;
+Keywords=password;manager;vault;security;
