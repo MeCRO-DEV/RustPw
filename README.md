@@ -1,8 +1,8 @@
-# RustPW - Secure Password Manager
+# RustPw - Secure Password Manager
 
-A secure, cross-platform desktop password manager built with Rust and the Iced GUI framework. RustPW provides strong encryption for your passwords with a clean, dark-themed interface.
+A secure, cross-platform desktop password manager built with Rust and the Iced GUI framework. RustPw provides strong encryption for your passwords with a clean, dark-themed interface.
 
-![RustPW Screenshot](assets/icon.png)
+![RustPw Screenshot](assets/icon.png)
 
 ## Features
 
@@ -38,13 +38,13 @@ A secure, cross-platform desktop password manager built with Rust and the Iced G
 
 ## Architecture
 
-RustPW is a single-binary application with all code contained in `src/main.rs` (~3000 lines). The architecture follows Iced's Elm-inspired pattern.
+RustPw is a single-binary application with all code contained in `src/main.rs` (~3000 lines). The architecture follows Iced's Elm-inspired pattern.
 
 ### Core Components
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                        RustPW Application                   │
+│                        RustPw Application                   │
 ├─────────────────────────────────────────────────────────────┤
 │  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐  │
 │  │   Config    │  │ VaultCrypto │  │     VaultData       │  │
@@ -128,8 +128,8 @@ sudo pacman -S base-devel openssl libxkbcommon wayland libxcb
 
 #### Build
 ```bash
-git clone https://github.com/yourusername/RustPW.git
-cd RustPW
+git clone https://github.com/MeCRO-DEV/RustPw.git
+cd RustPw
 cargo build --release
 ```
 
@@ -146,7 +146,7 @@ sudo cp assets/icon.png /usr/share/icons/hicolor/256x256/apps/rustpw.png
 # Create desktop entry
 cat > ~/.local/share/applications/rustpw.desktop << EOF
 [Desktop Entry]
-Name=RustPW
+Name=RustPw
 Comment=Secure Password Manager
 Exec=rustpw
 Icon=rustpw
@@ -164,8 +164,8 @@ EOF
 
 #### Build
 ```powershell
-git clone https://github.com/yourusername/RustPW.git
-cd RustPW
+git clone https://github.com/MeCRO-DEV/RustPw.git
+cd RustPw
 cargo build --release
 ```
 
@@ -191,8 +191,8 @@ You can use tools like [Inno Setup](https://jrsoftware.org/isinfo.php) or [WiX](
 
 #### Build
 ```bash
-git clone https://github.com/yourusername/RustPW.git
-cd RustPW
+git clone https://github.com/MeCRO-DEV/RustPw.git
+cd RustPw
 cargo build --release
 ```
 
@@ -200,12 +200,12 @@ The binary will be at `target/release/rustpw`.
 
 #### Creating macOS App Bundle (Optional)
 ```bash
-mkdir -p RustPW.app/Contents/MacOS
-mkdir -p RustPW.app/Contents/Resources
-cp target/release/rustpw RustPW.app/Contents/MacOS/
-cp assets/icon.png RustPW.app/Contents/Resources/
+mkdir -p RustPw.app/Contents/MacOS
+mkdir -p RustPw.app/Contents/Resources
+cp target/release/rustpw RustPw.app/Contents/MacOS/
+cp assets/icon.png RustPw.app/Contents/Resources/
 
-cat > RustPW.app/Contents/Info.plist << EOF
+cat > RustPw.app/Contents/Info.plist << EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -215,7 +215,7 @@ cat > RustPW.app/Contents/Info.plist << EOF
     <key>CFBundleIdentifier</key>
     <string>com.rustpw.app</string>
     <key>CFBundleName</key>
-    <string>RustPW</string>
+    <string>RustPw</string>
     <key>CFBundleVersion</key>
     <string>1.0.0</string>
     <key>CFBundleIconFile</key>
@@ -229,7 +229,7 @@ EOF
 
 ### Creating a Vault
 
-1. Launch RustPW
+1. Launch RustPw
 2. Click **"New Vault"** on the startup screen or toolbar
 3. Click **"Browse"** to select a location and filename (use `.rustpw` extension)
 4. Enter a strong passphrase and confirm it
@@ -342,7 +342,7 @@ The cipher mode setting in configuration only applies when **creating new vaults
 
 ## Vault File Format
 
-RustPW vault files (`.rustpw`) use a binary format:
+RustPw vault files (`.rustpw`) use a binary format:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -411,7 +411,7 @@ RustPW vault files (`.rustpw`) use a binary format:
 
 ### Corruption Prevention
 
-RustPW uses **atomic writes with automatic backup** to prevent vault corruption:
+RustPw uses **atomic writes with automatic backup** to prevent vault corruption:
 
 1. **Write to temp file** - Data is first written to `vault.rustpw.tmp`
 2. **Create backup** - The existing vault is renamed to `vault.rustpw.bak`
@@ -468,4 +468,4 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ---
 
-**Disclaimer**: While RustPW implements strong encryption, no software is 100% secure. Use at your own risk and always maintain backups of important data.
+**Disclaimer**: While RustPw implements strong encryption, no software is 100% secure. Use at your own risk and always maintain backups of important data.

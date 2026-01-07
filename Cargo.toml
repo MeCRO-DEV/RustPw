@@ -1,9 +1,9 @@
 [package]
 name = "rustpw"
 version = "1.0.0"
-edition = "2021"
+edition = "2026"
 description = "A secure password manager built with Rust and Iced"
-authors = ["Tom"]
+authors = ["MeCRO"]
 
 [dependencies]
 iced = { version = "0.13", features = ["tokio", "image"] }
