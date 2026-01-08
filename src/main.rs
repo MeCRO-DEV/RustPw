@@ -42,7 +42,7 @@ use zeroize::Zeroize;
 // ============================================================================
 const APP_NAME: &str = "RustPw";
 const APP_VERSION: &str = "1.0.0";
-const WINDOW_WIDTH: u32 = 1224;
+const WINDOW_WIDTH: u32 = 1524;
 const WINDOW_HEIGHT: u32 = 768;
 const VAULT_FILE_EXTENSION: &str = "rustpw";
 const CONFIG_FILE_NAME: &str = "rustpw.conf";
@@ -2136,61 +2136,35 @@ impl RustPw {
     fn view_toolbar(&self) -> Element<'_, Message> {
         let has_vault = self.vault_data.is_some();
 
-        // Create toolbar buttons inline - matching the working tab button pattern
-        let btn_new = button(text("New Vault").size(13))
-            .padding([8, 12])
-            .style(button_tab_style)
+        // Vault operations - Green
+        let btn_new = toolbar_button("New Vault", COLOR_ACCENT_GREEN)
             .on_press(Message::NewVault);
-
-        let btn_open = button(text("Open Vault").size(13))
-            .padding([8, 12])
-            .style(button_tab_style)
+        let btn_open = toolbar_button("Open Vault", COLOR_ACCENT_GREEN)
             .on_press(Message::OpenVault);
-
-        let btn_close = button(text("Close Vault").size(13))
-            .padding([8, 12])
-            .style(button_tab_style)
+        let btn_close = toolbar_button("Close Vault", COLOR_ACCENT_GREEN)
             .on_press_maybe(has_vault.then_some(Message::CloseVault));
-
-        let btn_save = button(text("Save").size(13))
-            .padding([8, 12])
-            .style(button_tab_style)
+        let btn_save = toolbar_button("Save", COLOR_ACCENT_GREEN)
             .on_press_maybe(has_vault.then_some(Message::SaveVault));
 
-        let btn_category = button(text("+ Category").size(13))
-            .padding([8, 12])
-            .style(button_tab_style)
+        // Add operations - Cyan
+        let btn_category = toolbar_button("+ Category", COLOR_ACCENT_CYAN)
             .on_press_maybe(has_vault.then_some(Message::AddCategory));
-
-        let btn_entry = button(text("+ Entry").size(13))
-            .padding([8, 12])
-            .style(button_tab_style)
+        let btn_entry = toolbar_button("+ Entry", COLOR_ACCENT_CYAN)
             .on_press_maybe(has_vault.then_some(Message::AddEntry));
 
-        let btn_config = button(text("Config").size(13))
-            .padding([8, 12])
-            .style(button_tab_style)
+        // Info operations - Yellow
+        let btn_config = toolbar_button("Config", COLOR_ACCENT_YELLOW)
             .on_press(Message::OpenConfig);
-
-        let btn_info = button(text("Vault Info").size(13))
-            .padding([8, 12])
-            .style(button_tab_style)
+        let btn_info = toolbar_button("Vault Info", COLOR_ACCENT_YELLOW)
             .on_press_maybe(has_vault.then_some(Message::GoToScreen(Screen::VaultProperties)));
-
-        let btn_app_info = button(text("App Info").size(13))
-            .padding([8, 12])
-            .style(button_tab_style)
+        let btn_app_info = toolbar_button("App Info", COLOR_ACCENT_YELLOW)
             .on_press(Message::GoToScreen(Screen::AppInfo));
 
-        let btn_exit = button(text("Exit").size(13))
-            .padding([8, 12])
-            .style(button_tab_style)
-            .on_press(Message::CloseApp);
-
-        let btn_lock = button(text("Lock").size(13))
-            .padding([8, 12])
-            .style(button_tab_style)
+        // Lock/Exit - Red
+        let btn_lock = toolbar_button("Lock", COLOR_ACCENT_RED)
             .on_press_maybe(has_vault.then_some(Message::LockVault));
+        let btn_exit = toolbar_button("Exit", COLOR_ACCENT_RED)
+            .on_press(Message::CloseApp);
 
         row![
             btn_new,
@@ -2958,7 +2932,7 @@ impl RustPw {
             vertical_space().height(20),
             row![
                 horizontal_space(),
-                text("Copyright © 2026 MeCRO").size(12).color(COLOR_ACCENT_CYAN),
+                text("Copyright © 2025 MeCRO").size(12).color(COLOR_ACCENT_CYAN),
                 horizontal_space(),
             ],
             row![
@@ -3284,6 +3258,30 @@ fn button_tab_style(_theme: &Theme, status: button::Status) -> button::Style {
         },
         _ => base,
     }
+}
+
+fn toolbar_button<'a>(label: &'a str, color: Color) -> button::Button<'a, Message> {
+    button(text(label).size(13).color(color))
+        .padding([8, 12])
+        .style(move |_theme, status| {
+            let base = button::Style {
+                background: Some(COLOR_BG_TITLE.into()),
+                text_color: color,
+                border: iced::Border {
+                    color,
+                    width: 1.0,
+                    radius: 5.0.into(),
+                },
+                ..Default::default()
+            };
+            match status {
+                button::Status::Hovered => button::Style {
+                    background: Some(COLOR_HOVER.into()),
+                    ..base
+                },
+                _ => base,
+            }
+        })
 }
 
 fn button_tab_selected_style(_theme: &Theme, _status: button::Status) -> button::Style {
