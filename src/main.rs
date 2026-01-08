@@ -2932,7 +2932,7 @@ impl RustPw {
             vertical_space().height(20),
             row![
                 horizontal_space(),
-                text("Copyright © 2025 MeCRO").size(12).color(COLOR_ACCENT_CYAN),
+                text("Copyright © 2026 MeCRO").size(12).color(COLOR_ACCENT_CYAN),
                 horizontal_space(),
             ],
             row![
