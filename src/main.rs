@@ -42,7 +42,7 @@ use zeroize::Zeroize;
 // ============================================================================
 const APP_NAME: &str = "RustPw";
 const APP_VERSION: &str = "1.0.0";
-const WINDOW_WIDTH: u32 = 1024;
+const WINDOW_WIDTH: u32 = 1224;
 const WINDOW_HEIGHT: u32 = 768;
 const VAULT_FILE_EXTENSION: &str = "rustpw";
 const CONFIG_FILE_NAME: &str = "rustpw.conf";
@@ -785,6 +785,7 @@ pub enum Screen {
     PasswordGenerator,
     ConfigDialog,
     VaultProperties,
+    AppInfo,
     ConfirmDialog { title: String, message: String, action: ConfirmAction },
     CategoryInput { mode: CategoryInputMode },
 }
@@ -1690,6 +1691,7 @@ impl RustPw {
             Screen::PasswordGenerator => self.view_password_generator(),
             Screen::ConfigDialog => self.view_config_dialog(),
             Screen::VaultProperties => self.view_vault_properties(),
+            Screen::AppInfo => self.view_app_info(),
             Screen::ConfirmDialog { title, message, .. } => self.view_confirm_dialog(title, message),
             Screen::CategoryInput { mode } => self.view_category_input(mode),
         }
@@ -2175,6 +2177,11 @@ impl RustPw {
             .style(button_tab_style)
             .on_press_maybe(has_vault.then_some(Message::GoToScreen(Screen::VaultProperties)));
 
+        let btn_app_info = button(text("App Info").size(13))
+            .padding([8, 12])
+            .style(button_tab_style)
+            .on_press(Message::GoToScreen(Screen::AppInfo));
+
         let btn_exit = button(text("Exit").size(13))
             .padding([8, 12])
             .style(button_tab_style)
@@ -2196,9 +2203,10 @@ impl RustPw {
             horizontal_space().width(20),
             btn_config,
             btn_info,
-            btn_exit,
+            btn_app_info,
             horizontal_space(),
             btn_lock,
+            btn_exit,
         ]
         .spacing(8)
         .padding(10)
@@ -2915,6 +2923,62 @@ impl RustPw {
         dialog_container(content.into())
     }
 
+    fn view_app_info(&self) -> Element<'_, Message> {
+        let icon_handle = image::Handle::from_bytes(include_bytes!("../assets/icon.png").to_vec());
+        let icon_image = image(icon_handle).width(64).height(64);
+
+        let content = column![
+            row![
+                horizontal_space(),
+                icon_image,
+                horizontal_space(),
+            ],
+            vertical_space().height(15),
+            row![
+                horizontal_space(),
+                text(APP_NAME).size(28).color(COLOR_ACCENT_YELLOW),
+                horizontal_space(),
+            ],
+            row![
+                horizontal_space(),
+                text(format!("Version {}", APP_VERSION)).size(14).color(COLOR_TEXT_WHITE),
+                horizontal_space(),
+            ],
+            vertical_space().height(20),
+            row![
+                horizontal_space(),
+                text("A secure password manager built with").size(12).color(COLOR_TEXT_WHITE),
+                horizontal_space(),
+            ],
+            row![
+                horizontal_space(),
+                text("Rust and Iced GUI framework").size(12).color(COLOR_TEXT_WHITE),
+                horizontal_space(),
+            ],
+            vertical_space().height(20),
+            row![
+                horizontal_space(),
+                text("Copyright © 2026 MeCRO").size(12).color(COLOR_ACCENT_CYAN),
+                horizontal_space(),
+            ],
+            row![
+                horizontal_space(),
+                text("Licensed under MIT License").size(12).color(COLOR_ACCENT_CYAN),
+                horizontal_space(),
+            ],
+            vertical_space().height(25),
+            row![
+                horizontal_space(),
+                styled_button("Close", COLOR_ACCENT_YELLOW).on_press(Message::CloseDialog),
+                horizontal_space(),
+            ],
+        ]
+        .spacing(5)
+        .width(350);
+
+        dialog_container(content.into())
+    }
+
     fn view_confirm_dialog(&self, title: &str, message: &str) -> Element<'_, Message> {
         let title_owned = title.to_string();
         let message_owned = message.to_string();
@@ -3367,6 +3431,7 @@ fn main() -> iced::Result {
     if let Some(icon) = load_icon() {
         app = app.window(window::Settings {
             icon: Some(icon),
+            size: iced::Size::new(WINDOW_WIDTH as f32, WINDOW_HEIGHT as f32),
             ..Default::default()
         });
     }
