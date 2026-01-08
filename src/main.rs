@@ -919,6 +919,8 @@ pub enum Message {
     // Keyboard navigation
     FocusNext,
     FocusPrevious,
+    KeyboardEnter,
+    KeyboardEscape,
 }
 
 pub struct RustPw {
@@ -1676,6 +1678,47 @@ impl RustPw {
             Message::FocusPrevious => {
                 return widget::focus_previous();
             }
+
+            // Keyboard Enter/Escape handling for dialogs
+            Message::KeyboardEnter => {
+                match &self.screen {
+                    Screen::VaultDialog { .. } => {
+                        // Enter = Create/Open (ConfirmYes triggers the action)
+                        return self.update(Message::ConfirmYes);
+                    }
+                    Screen::EntryDialog { .. } => {
+                        // Enter = Save
+                        return self.update(Message::SaveEntry);
+                    }
+                    Screen::CategoryInput { .. } => {
+                        // Enter = OK (ConfirmCategoryAction)
+                        return self.update(Message::ConfirmCategoryAction);
+                    }
+                    Screen::ConfigDialog => {
+                        // Enter = Save
+                        return self.update(Message::SaveConfig);
+                    }
+                    Screen::VaultProperties | Screen::AppInfo => {
+                        // Enter = Close
+                        return self.update(Message::CloseDialog);
+                    }
+                    _ => {}
+                }
+            }
+            Message::KeyboardEscape => {
+                match &self.screen {
+                    Screen::VaultDialog { .. }
+                    | Screen::EntryDialog { .. }
+                    | Screen::CategoryInput { .. }
+                    | Screen::ConfigDialog
+                    | Screen::VaultProperties
+                    | Screen::AppInfo => {
+                        // ESC = Cancel/Close
+                        return self.update(Message::CloseDialog);
+                    }
+                    _ => {}
+                }
+            }
         }
 
         Task::none()
@@ -1702,14 +1745,21 @@ impl RustPw {
             time::every(Duration::from_secs(1)).map(Message::Tick),
             window::close_requests().map(Message::WindowCloseRequested),
             keyboard::on_key_press(|key, modifiers| {
-                if key == keyboard::Key::Named(keyboard::key::Named::Tab) {
-                    if modifiers.shift() {
-                        Some(Message::FocusPrevious)
-                    } else {
-                        Some(Message::FocusNext)
+                match key {
+                    keyboard::Key::Named(keyboard::key::Named::Tab) => {
+                        if modifiers.shift() {
+                            Some(Message::FocusPrevious)
+                        } else {
+                            Some(Message::FocusNext)
+                        }
                     }
-                } else {
-                    None
+                    keyboard::Key::Named(keyboard::key::Named::Enter) => {
+                        Some(Message::KeyboardEnter)
+                    }
+                    keyboard::Key::Named(keyboard::key::Named::Escape) => {
+                        Some(Message::KeyboardEscape)
+                    }
+                    _ => None,
                 }
             }),
         ])
@@ -2431,6 +2481,7 @@ impl RustPw {
                     text_input("Select vault file...", &self.vault_dialog_path)
                         .id(id_vault_path())
                         .on_input(Message::VaultPathChanged)
+                        .on_submit(Message::ConfirmYes)
                         .padding(10)
                         .width(Length::Fill)
                         .style(text_input_style),
@@ -2448,10 +2499,12 @@ impl RustPw {
             text_input("Enter passphrase...", &self.vault_dialog_passphrase)
                 .id(id_passphrase())
                 .on_input(Message::PassphraseChanged)
+                .on_submit(Message::ConfirmYes)
         } else {
             text_input("Enter passphrase...", &self.vault_dialog_passphrase)
                 .id(id_passphrase())
                 .on_input(Message::PassphraseChanged)
+                .on_submit(Message::ConfirmYes)
                 .secure(true)
         };
 
@@ -2481,10 +2534,12 @@ impl RustPw {
                 text_input("Confirm passphrase...", &self.vault_dialog_confirm)
                     .id(id_confirm_passphrase())
                     .on_input(Message::ConfirmPassphraseChanged)
+                    .on_submit(Message::ConfirmYes)
             } else {
                 text_input("Confirm passphrase...", &self.vault_dialog_confirm)
                     .id(id_confirm_passphrase())
                     .on_input(Message::ConfirmPassphraseChanged)
+                    .on_submit(Message::ConfirmYes)
                     .secure(true)
             };
 
@@ -2544,10 +2599,12 @@ impl RustPw {
             text_input("Enter password", &self.entry_dialog.password)
                 .id(id_entry_password())
                 .on_input(Message::EntryPasswordChanged)
+                .on_submit(Message::SaveEntry)
         } else {
             text_input("Enter password", &self.entry_dialog.password)
                 .id(id_entry_password())
                 .on_input(Message::EntryPasswordChanged)
+                .on_submit(Message::SaveEntry)
                 .secure(true)
         };
 
@@ -2560,6 +2617,7 @@ impl RustPw {
                 text_input("e.g., Gmail Account", &self.entry_dialog.name)
                     .id(id_entry_name())
                     .on_input(Message::EntryNameChanged)
+                    .on_submit(Message::SaveEntry)
                     .padding(8)
                     .style(text_input_style),
             ]
@@ -2570,6 +2628,7 @@ impl RustPw {
                 text_input("e.g., user@example.com", &self.entry_dialog.username)
                     .id(id_entry_username())
                     .on_input(Message::EntryUsernameChanged)
+                    .on_submit(Message::SaveEntry)
                     .padding(8)
                     .style(text_input_style),
             ]
@@ -2609,6 +2668,7 @@ impl RustPw {
                 text_input("e.g., https://www.example.com", &self.entry_dialog.url)
                     .id(id_entry_url())
                     .on_input(Message::EntryUrlChanged)
+                    .on_submit(Message::SaveEntry)
                     .padding(8)
                     .style(text_input_style),
             ]
@@ -2619,6 +2679,7 @@ impl RustPw {
                 text_input("Additional notes...", &self.entry_dialog.notes)
                     .id(id_entry_notes())
                     .on_input(Message::EntryNotesChanged)
+                    .on_submit(Message::SaveEntry)
                     .padding(8)
                     .style(text_input_style),
             ]
@@ -2779,6 +2840,7 @@ impl RustPw {
                 text("Default vault:").width(200).color(COLOR_TEXT_WHITE),
                 text_input("(none)", &self.config_edit.default_vault.clone().unwrap_or_default())
                     .on_input(Message::ConfigDefaultVaultChanged)
+                    .on_submit(Message::SaveConfig)
                     .padding(5)
                     .width(250)
                     .style(text_input_style),
@@ -3388,6 +3450,7 @@ fn config_row(
         horizontal_space(),
         text_input("", &value)
             .on_input(on_change)
+            .on_submit(Message::SaveConfig)
             .padding(5)
             .width(120)
             .style(text_input_style),

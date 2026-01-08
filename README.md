@@ -291,10 +291,24 @@ EOF
 
 ### Keyboard Shortcuts
 
+RustPw supports keyboard navigation in all dialogs. Pressing Enter or Escape while focused on any input field within a dialog triggers the corresponding action.
+
+| Dialog | Enter | Escape |
+|--------|-------|--------|
+| Create New Vault | Create | Cancel |
+| Open Vault | Open | Cancel |
+| Add/Edit Entry | Save | Cancel |
+| Add/Rename Category | OK | Cancel |
+| Configuration | Save | Cancel |
+| Vault Properties | Close | Close |
+| App Info | Close | Close |
+
+**Additional shortcuts:**
+
 | Key | Action |
 |-----|--------|
-| `Enter` | Confirm dialog / Submit form |
-| `Escape` | Close dialog / Cancel |
+| `Tab` | Move to next input field |
+| `Shift+Tab` | Move to previous input field |
 
 ## Configuration
 
