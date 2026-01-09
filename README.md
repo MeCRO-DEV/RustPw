@@ -8,7 +8,7 @@ A secure, cross-platform desktop password manager built with Rust and the Iced G
 
 - **Strong Encryption**: AES-256 encryption with multiple cipher modes (GCM, CBC, CTR)
 - **Secure Key Derivation**: PBKDF2 with configurable iterations (default: 100,000)
-- **Category Organization**: Organize passwords into custom categories
+- **Category Organization**: Organize passwords into custom categories with drag-and-drop reordering
 - **Password Generator**: Built-in generator with strength calculation
 - **Auto-Lock**: Automatic vault locking after configurable inactivity period
 - **Clipboard Security**: Automatic clipboard clearing after copying passwords
@@ -273,6 +273,11 @@ EOF
 #### Renaming a Category
 - **Double-click** on a category tab to rename it
 
+#### Reordering Categories
+- **Drag and drop** category tabs to reorder them
+- Click and hold a tab, drag it over another tab (which will highlight in green), and release to swap positions
+- The custom order is saved with your vault
+
 #### Deleting a Category
 - Click the **"x"** button on a category tab (deletes all entries in that category)
 
@@ -391,8 +396,12 @@ RustPw vault files (`.rustpw`) use a binary format:
       }
     ]
   },
-  "created": "2024-01-01T00:00:00Z",
-  "modified": "2024-01-01T00:00:00Z"
+  "metadata": {
+    "created": "2024-01-01T00:00:00Z",
+    "modified": "2024-01-01T00:00:00Z",
+    "version": "1.0"
+  },
+  "category_order": ["Category Name", "Another Category"]
 }
 ```
 

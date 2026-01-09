@@ -20,8 +20,8 @@ use cbc::cipher::{BlockDecryptMut, BlockEncryptMut, KeyIvInit};
 use ctr::cipher::StreamCipher;
 use chrono::Utc;
 use iced::widget::{
-    button, checkbox, column, container, horizontal_rule, horizontal_space, image, progress_bar,
-    row, scrollable, text, text_input, tooltip, vertical_space, Column, Row,
+    button, checkbox, column, container, horizontal_rule, horizontal_space, image, mouse_area,
+    progress_bar, row, scrollable, text, text_input, tooltip, vertical_space, Column, Row,
 };
 use iced::widget::text_input::Id as TextInputId;
 use iced::{
@@ -691,18 +691,56 @@ impl Default for VaultMetadata {
 pub struct VaultData {
     pub categories: HashMap<String, Vec<Entry>>,
     pub metadata: VaultMetadata,
+    #[serde(default)]
+    pub category_order: Vec<String>,
 }
 
 impl VaultData {
     pub fn new() -> Self {
         let mut vault = Self::default();
         vault.categories.insert("General".to_string(), Vec::new());
+        vault.category_order.push("General".to_string());
         vault
+    }
+
+    /// Ensure category_order is in sync with categories (for backwards compatibility)
+    pub fn sync_category_order(&mut self) {
+        // Remove any categories from order that don't exist
+        self.category_order.retain(|c| self.categories.contains_key(c));
+        // Add any categories that exist but aren't in order
+        for cat in self.categories.keys() {
+            if !self.category_order.contains(cat) {
+                self.category_order.push(cat.clone());
+            }
+        }
+    }
+
+    /// Get categories in their display order
+    pub fn ordered_categories(&self) -> Vec<&String> {
+        if self.category_order.is_empty() {
+            // Fallback to sorted order if no order defined
+            let mut cats: Vec<_> = self.categories.keys().collect();
+            cats.sort();
+            cats
+        } else {
+            self.category_order.iter()
+                .filter(|c| self.categories.contains_key(*c))
+                .collect()
+        }
+    }
+
+    /// Swap positions of two categories in the order
+    pub fn swap_categories(&mut self, index1: usize, index2: usize) {
+        if index1 < self.category_order.len() && index2 < self.category_order.len() {
+            self.category_order.swap(index1, index2);
+            self.update_modified();
+        }
     }
 
     pub fn add_category(&mut self, name: &str) -> bool {
         if !self.categories.contains_key(name) {
             self.categories.insert(name.to_string(), Vec::new());
+            self.category_order.push(name.to_string());
             self.update_modified();
             true
         } else {
@@ -714,6 +752,10 @@ impl VaultData {
         if self.categories.contains_key(old_name) && !self.categories.contains_key(new_name) {
             if let Some(entries) = self.categories.remove(old_name) {
                 self.categories.insert(new_name.to_string(), entries);
+                // Update category_order
+                if let Some(pos) = self.category_order.iter().position(|c| c == old_name) {
+                    self.category_order[pos] = new_name.to_string();
+                }
                 self.update_modified();
                 return true;
             }
@@ -723,6 +765,7 @@ impl VaultData {
 
     pub fn delete_category(&mut self, name: &str) -> bool {
         if self.categories.remove(name).is_some() {
+            self.category_order.retain(|c| c != name);
             self.update_modified();
             true
         } else {
@@ -864,6 +907,12 @@ pub enum Message {
     DeleteCategory(String),
     SelectCategory(String),
     CategoryNameChanged(String),
+
+    // Tab drag-and-drop
+    TabDragStart(usize),
+    TabDragOver(usize),
+    TabDragEnd,
+    TabDragCancel,
     ConfirmCategoryAction,
 
     // Entry operations
@@ -986,6 +1035,10 @@ pub struct RustPw {
     last_tab_click_time: Option<Instant>,
     last_tab_clicked: Option<String>,
 
+    // Tab drag state
+    dragging_tab: Option<usize>,
+    drag_over_tab: Option<usize>,
+
     // Status
     status_message: String,
 }
@@ -1036,6 +1089,9 @@ impl Default for RustPw {
 
             last_tab_click_time: None,
             last_tab_clicked: None,
+
+            dragging_tab: None,
+            drag_over_tab: None,
 
             status_message: "Ready".to_string(),
         }
@@ -1169,16 +1225,18 @@ impl RustPw {
             }
             Message::VaultLoaded(result) => {
                 match result {
-                    Ok((data, props)) => {
+                    Ok((mut data, props)) => {
+                        // Sync category order for backwards compatibility with old vault files
+                        data.sync_category_order();
                         self.vault_data = Some(data);
                         self.vault_properties = Some(props);
                         self.passphrase = self.vault_dialog_passphrase.clone();
                         self.modified = false;
                         self.password_visible_rows.clear();
 
-                        // Select first category
+                        // Select first category (in order)
                         if let Some(ref data) = self.vault_data {
-                            self.selected_category = data.categories.keys().next().cloned();
+                            self.selected_category = data.ordered_categories().first().map(|s| (*s).clone());
                         }
 
                         self.screen = Screen::Main;
@@ -1396,6 +1454,43 @@ impl RustPw {
             }
             Message::CategoryNameChanged(s) => {
                 self.category_input = s;
+            }
+            Message::TabDragStart(index) => {
+                self.dragging_tab = Some(index);
+                self.drag_over_tab = None;
+            }
+            Message::TabDragOver(index) => {
+                if self.dragging_tab.is_some() {
+                    self.drag_over_tab = Some(index);
+                }
+            }
+            Message::TabDragEnd => {
+                if let Some(from) = self.dragging_tab {
+                    if let Some(to) = self.drag_over_tab {
+                        // Dragged to another tab - swap them
+                        if from != to {
+                            if let Some(ref mut data) = self.vault_data {
+                                data.swap_categories(from, to);
+                                self.modified = true;
+                                self.status_message = "Category order changed".to_string();
+                            }
+                        }
+                    }
+                    // Select the category that was clicked/dragged from
+                    if let Some(ref data) = self.vault_data {
+                        let categories = data.ordered_categories();
+                        if let Some(cat) = categories.get(from) {
+                            self.selected_category = Some((*cat).clone());
+                            self.password_visible_rows.clear();
+                        }
+                    }
+                }
+                self.dragging_tab = None;
+                self.drag_over_tab = None;
+            }
+            Message::TabDragCancel => {
+                self.dragging_tab = None;
+                self.drag_over_tab = None;
             }
             Message::ConfirmCategoryAction => {
                 if let Screen::CategoryInput { mode } = &self.screen {
@@ -2009,7 +2104,7 @@ impl RustPw {
         if let Some(ref mut data) = self.vault_data {
             if data.delete_category(name) {
                 if self.selected_category.as_ref() == Some(&name.to_string()) {
-                    self.selected_category = data.categories.keys().next().cloned();
+                    self.selected_category = data.ordered_categories().first().map(|s| (*s).clone());
                 }
                 self.modified = true;
                 self.status_message = format!("Category '{}' deleted", name);
@@ -2284,16 +2379,40 @@ impl RustPw {
 
         let mut tabs_row = Row::new().spacing(2);
 
-        let mut categories: Vec<_> = data.categories.keys().collect();
-        categories.sort();
+        // Use ordered_categories for custom ordering
+        let categories = data.ordered_categories();
 
-        for category in categories {
-            let is_selected = self.selected_category.as_ref() == Some(category);
-            let cat_name = category.clone();
-            let cat_name2 = category.clone();
+        for (index, category) in categories.iter().enumerate() {
+            let is_selected = self.selected_category.as_ref() == Some(*category);
+            let is_dragging = self.dragging_tab == Some(index);
+            let is_drag_over = self.dragging_tab.is_some()
+                && self.drag_over_tab == Some(index)
+                && self.dragging_tab != self.drag_over_tab;
+            let cat_name2 = (*category).clone();
+
+            // Choose style based on drag state
+            let container_style = if is_drag_over {
+                container_tab_drag_over_style
+            } else if is_dragging {
+                container_tab_dragging_style
+            } else if is_selected {
+                container_tab_selected_style
+            } else {
+                container_tab_style
+            };
+
+            let text_color = if is_drag_over {
+                COLOR_ACCENT_GREEN
+            } else if is_dragging {
+                COLOR_ACCENT_CYAN
+            } else if is_selected {
+                COLOR_ACCENT_YELLOW
+            } else {
+                COLOR_TEXT_WHITE
+            };
 
             let tab_content = row![
-                text(category).size(12),
+                text(*category).size(12).color(text_color),
                 horizontal_space().width(5),
                 button(text("x").size(10))
                     .padding(2)
@@ -2302,28 +2421,33 @@ impl RustPw {
             ]
             .align_y(alignment::Vertical::Center);
 
-            let tab = button(tab_content)
+            let tab = container(tab_content)
                 .padding([10, 15])
-                .style(if is_selected {
-                    button_tab_selected_style
-                } else {
-                    button_tab_style
-                })
-                .on_press(Message::SelectCategory(cat_name));
+                .style(container_style);
 
-            tabs_row = tabs_row.push(tab);
+            // Wrap tab in mouse_area for drag-and-drop and selection
+            let draggable_tab = mouse_area(tab)
+                .on_press(Message::TabDragStart(index))
+                .on_release(Message::TabDragEnd)
+                .on_enter(Message::TabDragOver(index));
+
+            tabs_row = tabs_row.push(draggable_tab);
         }
 
-        container(
+        // Wrap in mouse_area to cancel drag when mouse leaves tabs area
+        let tabs_with_cancel = mouse_area(
             scrollable(tabs_row)
                 .direction(scrollable::Direction::Horizontal(
                     scrollable::Scrollbar::default(),
                 ))
                 .width(Length::Fill),
         )
-        .padding(5)
-        .height(45)
-        .into()
+        .on_exit(Message::TabDragCancel);
+
+        container(tabs_with_cancel)
+            .padding(5)
+            .height(45)
+            .into()
     }
 
     fn view_entry_table(&self) -> Element<'_, Message> {
@@ -3194,6 +3318,58 @@ fn container_dialog_style(_theme: &Theme) -> container::Style {
     }
 }
 
+fn container_tab_style(_theme: &Theme) -> container::Style {
+    container::Style {
+        background: Some(COLOR_BG_TITLE.into()),
+        text_color: Some(COLOR_TEXT_WHITE),
+        border: iced::Border {
+            color: Color::TRANSPARENT,
+            width: 0.0,
+            radius: 5.0.into(),
+        },
+        ..Default::default()
+    }
+}
+
+fn container_tab_selected_style(_theme: &Theme) -> container::Style {
+    container::Style {
+        background: Some(COLOR_BG_DARK.into()),
+        text_color: Some(COLOR_ACCENT_YELLOW),
+        border: iced::Border {
+            color: COLOR_ACCENT_CYAN,
+            width: 2.0,
+            radius: 5.0.into(),
+        },
+        ..Default::default()
+    }
+}
+
+fn container_tab_dragging_style(_theme: &Theme) -> container::Style {
+    container::Style {
+        background: Some(Color::from_rgba(0.2, 0.2, 0.5, 0.5).into()),
+        text_color: Some(COLOR_ACCENT_CYAN),
+        border: iced::Border {
+            color: COLOR_ACCENT_CYAN,
+            width: 2.0,
+            radius: 5.0.into(),
+        },
+        ..Default::default()
+    }
+}
+
+fn container_tab_drag_over_style(_theme: &Theme) -> container::Style {
+    container::Style {
+        background: Some(COLOR_HOVER.into()),
+        text_color: Some(COLOR_ACCENT_GREEN),
+        border: iced::Border {
+            color: COLOR_ACCENT_GREEN,
+            width: 2.0,
+            radius: 5.0.into(),
+        },
+        ..Default::default()
+    }
+}
+
 fn text_input_style(_theme: &Theme, _status: text_input::Status) -> text_input::Style {
     text_input::Style {
         background: COLOR_BG_BLACK.into(),
@@ -3323,27 +3499,6 @@ fn button_close_style(_theme: &Theme, status: button::Status) -> button::Style {
     }
 }
 
-fn button_tab_style(_theme: &Theme, status: button::Status) -> button::Style {
-    let base = button::Style {
-        background: Some(COLOR_BG_TITLE.into()),
-        text_color: COLOR_TEXT_WHITE,
-        border: iced::Border {
-            color: Color::TRANSPARENT,
-            width: 0.0,
-            radius: 5.0.into(),
-        },
-        ..Default::default()
-    };
-
-    match status {
-        button::Status::Hovered => button::Style {
-            background: Some(COLOR_HOVER.into()),
-            ..base
-        },
-        _ => base,
-    }
-}
-
 fn toolbar_button<'a>(label: &'a str, color: Color) -> button::Button<'a, Message> {
     button(text(label).size(13).color(color))
         .padding([8, 12])
@@ -3366,19 +3521,6 @@ fn toolbar_button<'a>(label: &'a str, color: Color) -> button::Button<'a, Messag
                 _ => base,
             }
         })
-}
-
-fn button_tab_selected_style(_theme: &Theme, _status: button::Status) -> button::Style {
-    button::Style {
-        background: Some(COLOR_BG_DARK.into()),
-        text_color: COLOR_ACCENT_YELLOW,
-        border: iced::Border {
-            color: COLOR_ACCENT_CYAN,
-            width: 2.0,
-            radius: 5.0.into(),
-        },
-        ..Default::default()
-    }
 }
 
 fn button_tab_close_style(_theme: &Theme, status: button::Status) -> button::Style {
