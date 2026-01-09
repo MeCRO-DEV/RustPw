@@ -139,7 +139,7 @@ impl Default for Config {
             clipboard_clear_seconds: 30,
             default_password_length: 16,
             max_category_name_length: 30,
-            default_vault: Some("/home/tom/Documents/vault.rustpw".to_string()),
+            default_vault: None,
         }
     }
 }
@@ -1172,6 +1172,12 @@ impl RustPw {
                         self.screen = Screen::Main;
                         self.status_message = "Vault opened".to_string();
                         self.reset_vault_dialog();
+
+                        // Save this vault as the default for next launch
+                        if let Some(ref path) = self.vault_path {
+                            self.config.default_vault = Some(path.to_string_lossy().to_string());
+                            self.config.save();
+                        }
                     }
                     Err(e) => {
                         self.vault_dialog_error = Some(e);
@@ -1819,6 +1825,10 @@ impl RustPw {
         self.modified = false;
         self.screen = Screen::Main;
         self.status_message = "New vault created".to_string();
+
+        // Save this vault as the default for next launch
+        self.config.default_vault = Some(path.to_string_lossy().to_string());
+        self.config.save();
 
         // Save immediately
         self.save_vault()
