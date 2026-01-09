@@ -169,11 +169,23 @@ impl Config {
     }
 
     fn config_path() -> PathBuf {
-        let exe_dir = std::env::current_exe()
+        // Use platform-appropriate config directory
+        #[cfg(target_os = "linux")]
+        let config_dir = dirs::config_dir()
+            .unwrap_or_else(|| PathBuf::from("."))
+            .join("rustpw");
+
+        #[cfg(not(target_os = "linux"))]
+        let config_dir = std::env::current_exe()
             .ok()
             .and_then(|p| p.parent().map(|p| p.to_path_buf()))
             .unwrap_or_else(|| PathBuf::from("."));
-        exe_dir.join(CONFIG_FILE_NAME)
+
+        // Create config directory if it doesn't exist (Linux only)
+        #[cfg(target_os = "linux")]
+        let _ = fs::create_dir_all(&config_dir);
+
+        config_dir.join(CONFIG_FILE_NAME)
     }
 }
 
