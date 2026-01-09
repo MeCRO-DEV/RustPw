@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
+  <Package Name="RustPw"
+           Manufacturer="MeCRO"
+           Version="1.0.0.0"
+           UpgradeCode="12345678-1234-1234-1234-123456789012"
+           InstallerVersion="500"
+           Compressed="yes"
+           Scope="perMachine">
+
+    <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed." />
+
+    <MediaTemplate EmbedCab="yes" />
+
+    <!-- Define the installation directory structure -->
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="RustPw" />
+    </StandardDirectory>
+
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="ApplicationProgramsFolder" Name="RustPw"/>
+    </StandardDirectory>
+
+    <!-- Define the components to install -->
+    <DirectoryRef Id="INSTALLFOLDER">
+      <Component Id="FolderPermissions" Bitness="always64">
+        <CreateFolder>
+          <util:PermissionEx User="Users" GenericAll="yes" />
+        </CreateFolder>
+        <RegistryValue Root="HKLM"
+                       Key="Software\MeCRO\RustPw"
+                       Name="InstallFolder"
+                       Type="string"
+                       Value="[INSTALLFOLDER]"
+                       KeyPath="yes"/>
+      </Component>
+      <Component Id="RustPwExecutable" Bitness="always64">
+        <File Id="RustPwExe"
+              Source="..\target\release\rustpw.exe"
+              KeyPath="yes" />
+        <ProgId Id="RustPw.Document" Description="RustPw Document" Icon="RustPwExe">
+          <Extension Id="rustpw" ContentType="application/rustpw">
+            <Verb Id="open" Command="Open" TargetFile="RustPwExe" Argument='"%1"' />
+          </Extension>
+        </ProgId>
+      </Component>
+    </DirectoryRef>
+
+    <!-- Create Start Menu shortcut -->
+    <DirectoryRef Id="ApplicationProgramsFolder">
+      <Component Id="ApplicationShortcut" Bitness="always64">
+        <Shortcut Id="ApplicationStartMenuShortcut"
+                  Name="RustPw"
+                  Description="RustPw Application"
+                  Target="[INSTALLFOLDER]rustpw.exe"
+                  WorkingDirectory="INSTALLFOLDER"/>
+        <RemoveFolder Id="CleanUpShortCut" Directory="ApplicationProgramsFolder" On="uninstall"/>
+        <RegistryValue Root="HKCU"
+                       Key="Software\RustPw"
+                       Name="installed"
+                       Type="integer"
+                       Value="1"
+                       KeyPath="yes"/>
+      </Component>
+    </DirectoryRef>
+
+    <!-- Define the feature to install -->
+    <Feature Id="ProductFeature" Title="RustPw" Level="1">
+      <ComponentRef Id="FolderPermissions" />
+      <ComponentRef Id="RustPwExecutable" />
+      <ComponentRef Id="ApplicationShortcut" />
+    </Feature>
+
+    <!-- Use the basic WixUI dialog set -->
+    <WixVariable Id="WixUILicenseRtf" Value="License.rtf" Overridable="yes" />
+    <ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER" xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui" />
+  </Package>
+</Wix>
