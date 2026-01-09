@@ -14,3 +14,4 @@ target/
 
 # Ignore MSI installer files
 msi-creator/*.msi
+msi-creator/RustPw-Installer.wixpdb
