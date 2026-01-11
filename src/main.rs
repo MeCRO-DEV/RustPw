@@ -25,7 +25,7 @@ use iced::widget::{
 };
 use iced::widget::text_input::Id as TextInputId;
 use iced::{
-    alignment, keyboard, time, widget, window, Color, Element, Font, Length, Subscription, Task, Theme,
+    alignment, event, keyboard, time, widget, window, Color, Element, Event, Font, Length, Subscription, Task, Theme,
 };
 use pbkdf2::pbkdf2_hmac;
 use rand::Rng;
@@ -1009,6 +1009,7 @@ pub struct RustPw {
     // Entry dialog state
     entry_dialog: Entry,
     entry_dialog_password_visible: bool,
+    entry_dialog_error: Option<String>,
 
     // Password generator state
     pw_gen_length: u32,
@@ -1022,6 +1023,7 @@ pub struct RustPw {
 
     // Category input state
     category_input: String,
+    category_dialog_error: Option<String>,
 
     // Config state
     config: Config,
@@ -1069,6 +1071,7 @@ impl Default for RustPw {
 
             entry_dialog: Entry::new(),
             entry_dialog_password_visible: false,
+            entry_dialog_error: None,
 
             pw_gen_length: pw_len,
             pw_gen_upper: true,
@@ -1080,6 +1083,7 @@ impl Default for RustPw {
             pw_gen_for_entry: false,
 
             category_input: String::new(),
+            category_dialog_error: None,
 
             config: config.clone(),
             config_edit: config,
@@ -1360,16 +1364,16 @@ impl RustPw {
                         }
                     }
                 } else if let Screen::CategoryInput { mode } = &self.screen {
-                    match mode {
-                        CategoryInputMode::Add => {
-                            self.add_category();
-                        }
+                    let success = match mode {
+                        CategoryInputMode::Add => self.add_category(),
                         CategoryInputMode::Rename { old_name } => {
-                            self.rename_category_confirm(old_name.clone());
+                            self.rename_category_confirm(old_name.clone())
                         }
+                    };
+                    // Auto-save vault after category changes (only if successful)
+                    if success {
+                        return self.save_vault();
                     }
-                    // Auto-save vault after category changes
-                    return self.save_vault();
                 }
             }
             Message::ConfirmNo => {
@@ -1410,6 +1414,7 @@ impl RustPw {
             // Category operations
             Message::AddCategory => {
                 self.category_input.clear();
+                self.category_dialog_error = None;
                 self.screen = Screen::CategoryInput {
                     mode: CategoryInputMode::Add,
                 };
@@ -1417,6 +1422,7 @@ impl RustPw {
             }
             Message::RenameCategory(name) => {
                 self.category_input = name.clone();
+                self.category_dialog_error = None;
                 self.screen = Screen::CategoryInput {
                     mode: CategoryInputMode::Rename { old_name: name },
                 };
@@ -1454,6 +1460,7 @@ impl RustPw {
             }
             Message::CategoryNameChanged(s) => {
                 self.category_input = s;
+                self.category_dialog_error = None;
             }
             Message::TabDragStart(index) => {
                 self.dragging_tab = Some(index);
@@ -1494,16 +1501,16 @@ impl RustPw {
             }
             Message::ConfirmCategoryAction => {
                 if let Screen::CategoryInput { mode } = &self.screen {
-                    match mode {
-                        CategoryInputMode::Add => {
-                            self.add_category();
-                        }
+                    let success = match mode {
+                        CategoryInputMode::Add => self.add_category(),
                         CategoryInputMode::Rename { old_name } => {
-                            self.rename_category_confirm(old_name.clone());
+                            self.rename_category_confirm(old_name.clone())
                         }
+                    };
+                    // Auto-save vault after category changes (only if successful)
+                    if success {
+                        return self.save_vault();
                     }
-                    // Auto-save vault after category changes
-                    return self.save_vault();
                 }
             }
 
@@ -1511,6 +1518,7 @@ impl RustPw {
             Message::AddEntry => {
                 self.entry_dialog = Entry::new();
                 self.entry_dialog_password_visible = false;
+                self.entry_dialog_error = None;
                 self.screen = Screen::EntryDialog {
                     mode: EntryDialogMode::Add,
                 };
@@ -1523,6 +1531,7 @@ impl RustPw {
                             if let Some(entry) = entries.get(index) {
                                 self.entry_dialog = entry.clone();
                                 self.entry_dialog_password_visible = false;
+                                self.entry_dialog_error = None;
                                 self.screen = Screen::EntryDialog {
                                     mode: EntryDialogMode::Edit { index },
                                 };
@@ -1555,6 +1564,27 @@ impl RustPw {
             Message::EntryNotesChanged(s) => self.entry_dialog.notes = s,
             Message::SaveEntry => {
                 if let Screen::EntryDialog { mode } = &self.screen {
+                    // Validate required fields
+                    let name = self.entry_dialog.name.trim();
+                    let username = self.entry_dialog.username.trim();
+                    let password = &self.entry_dialog.password;
+
+                    if name.is_empty() || username.is_empty() || password.is_empty() {
+                        let mut missing = Vec::new();
+                        if name.is_empty() {
+                            missing.push("Name");
+                        }
+                        if username.is_empty() {
+                            missing.push("Username");
+                        }
+                        if password.is_empty() {
+                            missing.push("Password");
+                        }
+                        self.entry_dialog_error = Some(format!("Required: {}", missing.join(", ")));
+                        return Task::none();
+                    }
+                    self.entry_dialog_error = None;
+
                     match mode {
                         EntryDialogMode::Add => {
                             self.add_entry();
@@ -1869,10 +1899,19 @@ impl RustPw {
                     keyboard::Key::Named(keyboard::key::Named::Enter) => {
                         Some(Message::KeyboardEnter)
                     }
-                    keyboard::Key::Named(keyboard::key::Named::Escape) => {
-                        Some(Message::KeyboardEscape)
-                    }
                     _ => None,
+                }
+            }),
+            // Use event::listen_with for Escape to handle it even when text inputs capture it
+            event::listen_with(|event, _status, _window| {
+                if let Event::Keyboard(keyboard::Event::KeyPressed {
+                    key: keyboard::Key::Named(keyboard::key::Named::Escape),
+                    ..
+                }) = event
+                {
+                    Some(Message::KeyboardEscape)
+                } else {
+                    None
                 }
             }),
         ])
@@ -2043,17 +2082,18 @@ impl RustPw {
         self.status_message = "Vault closed".to_string();
     }
 
-    fn add_category(&mut self) {
+    fn add_category(&mut self) -> bool {
         let name = self.category_input.trim().to_string();
         if name.is_empty() {
-            return;
+            self.category_dialog_error = Some("Category name cannot be empty".to_string());
+            return false;
         }
         if name.len() > self.config.max_category_name_length as usize {
-            self.status_message = format!(
+            self.category_dialog_error = Some(format!(
                 "Category name too long (max {} chars)",
                 self.config.max_category_name_length
-            );
-            return;
+            ));
+            return false;
         }
 
         if let Some(ref mut data) = self.vault_data {
@@ -2061,27 +2101,35 @@ impl RustPw {
                 self.selected_category = Some(name.clone());
                 self.modified = true;
                 self.status_message = format!("Category '{}' added", name);
+                self.category_input.clear();
+                self.screen = Screen::Main;
+                return true;
             } else {
-                self.status_message = "Category already exists".to_string();
+                self.category_dialog_error = Some("Category already exists".to_string());
+                return false;
             }
         }
-
-        self.category_input.clear();
-        self.screen = Screen::Main;
+        false
     }
 
-    fn rename_category_confirm(&mut self, old_name: String) {
+    fn rename_category_confirm(&mut self, old_name: String) -> bool {
         let new_name = self.category_input.trim().to_string();
-        if new_name.is_empty() || new_name == old_name {
+        if new_name.is_empty() {
+            self.category_dialog_error = Some("Category name cannot be empty".to_string());
+            return false;
+        }
+        if new_name == old_name {
+            // No change, just close
+            self.category_input.clear();
             self.screen = Screen::Main;
-            return;
+            return true;
         }
         if new_name.len() > self.config.max_category_name_length as usize {
-            self.status_message = format!(
+            self.category_dialog_error = Some(format!(
                 "Category name too long (max {} chars)",
                 self.config.max_category_name_length
-            );
-            return;
+            ));
+            return false;
         }
 
         if let Some(ref mut data) = self.vault_data {
@@ -2091,13 +2139,15 @@ impl RustPw {
                 }
                 self.modified = true;
                 self.status_message = format!("Category renamed to '{}'", new_name);
+                self.category_input.clear();
+                self.screen = Screen::Main;
+                return true;
             } else {
-                self.status_message = "Category name already exists".to_string();
+                self.category_dialog_error = Some("Category name already exists".to_string());
+                return false;
             }
         }
-
-        self.category_input.clear();
-        self.screen = Screen::Main;
+        false
     }
 
     fn delete_category(&mut self, name: &str) {
@@ -2754,7 +2804,7 @@ impl RustPw {
                 .secure(true)
         };
 
-        let content = column![
+        let mut content = column![
             text(title).size(24).color(COLOR_ACCENT_YELLOW),
             vertical_space().height(15),
             // Name
@@ -2831,16 +2881,25 @@ impl RustPw {
             ]
             .spacing(5),
             vertical_space().height(15),
-            // Buttons
+        ];
+
+        // Error message
+        if let Some(ref error) = self.entry_dialog_error {
+            content = content.push(text(error).color(COLOR_ACCENT_RED));
+            content = content.push(vertical_space().height(10));
+        }
+
+        // Buttons
+        content = content.push(
             row![
                 horizontal_space(),
                 styled_button("Save", COLOR_ACCENT_GREEN).on_press(Message::SaveEntry),
                 horizontal_space().width(10),
                 styled_button("Cancel", COLOR_ACCENT_RED).on_press(Message::CloseDialog),
-            ],
-        ]
-        .spacing(10)
-        .width(500);
+            ]
+        );
+
+        let content = content.spacing(10).width(500);
 
         dialog_container(content.into())
     }
@@ -3191,7 +3250,7 @@ impl RustPw {
             CategoryInputMode::Rename { .. } => "Rename Category",
         };
 
-        let content = column![
+        let mut content = column![
             text(title).size(24).color(COLOR_ACCENT_YELLOW),
             vertical_space().height(20),
             text(format!("Category name (max {} chars):", self.config.max_category_name_length))
@@ -3202,16 +3261,24 @@ impl RustPw {
                 .on_submit(Message::ConfirmCategoryAction)
                 .padding(10)
                 .style(text_input_style),
-            vertical_space().height(20),
+        ]
+        .spacing(10)
+        .width(400);
+
+        // Error message
+        if let Some(ref error) = self.category_dialog_error {
+            content = content.push(text(error).color(COLOR_ACCENT_RED));
+        }
+
+        content = content.push(vertical_space().height(20));
+        content = content.push(
             row![
                 horizontal_space(),
                 styled_button("OK", COLOR_ACCENT_GREEN).on_press(Message::ConfirmYes),
                 horizontal_space().width(10),
                 styled_button("Cancel", COLOR_ACCENT_RED).on_press(Message::CloseDialog),
             ],
-        ]
-        .spacing(10)
-        .width(400);
+        );
 
         dialog_container(content.into())
     }
